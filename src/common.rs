@@ -1116,10 +1116,7 @@ pub fn get_custom_rendezvous_server(custom: String) -> String {
     if !custom.is_empty() {
         return custom;
     }
-    if !config::PROD_RENDEZVOUS_SERVER.read().unwrap().is_empty() {
-        return config::PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
-    }
-    "".to_owned()
+    "soporte.sistelca2011.com".to_owned()
 }
 
 #[inline]
@@ -1150,16 +1147,7 @@ fn get_api_server_(api: String, custom: String) -> String {
     if !api.is_empty() {
         return api.to_owned();
     }
-    let s0 = get_custom_rendezvous_server(custom);
-    if !s0.is_empty() {
-        let s = crate::increase_port(&s0, -2);
-        if s == s0 {
-            return format!("http://{}:{}", s, config::RENDEZVOUS_PORT - 2);
-        } else {
-            return format!("http://{}", s);
-        }
-    }
-    "https://admin.rustdesk.com".to_owned()
+    "http://soporte.sistelca2011.com:21114".to_owned()
 }
 
 #[inline]
@@ -2023,7 +2011,7 @@ pub async fn get_key(sync: bool) -> String {
         options.remove("key").unwrap_or_default()
     };
     if key.is_empty() {
-        key = config::RS_PUB_KEY.to_owned();
+        key = "S4Ta6ePKuvedUQ1R+f7tDcHoTja+sP5xaFxo5b5wkl0=".to_owned();
     }
     key
 }
