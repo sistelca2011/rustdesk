@@ -68,9 +68,9 @@ class DesktopSettingPage extends StatefulWidget {
         !bind.isDisableSettings() &&
         bind.mainGetBuildinOption(key: kOptionHideSecuritySetting) != 'Y')
       SettingsTabKey.safety,
-    if (!bind.isDisableSettings() &&
-        bind.mainGetBuildinOption(key: kOptionHideNetworkSetting) != 'Y')
-      SettingsTabKey.network,
+    //if (!bind.isDisableSettings() &&
+    //    bind.mainGetBuildinOption(key: kOptionHideNetworkSetting) != 'Y')
+    //  SettingsTabKey.network,
     if (!bind.isIncomingOnly()) SettingsTabKey.display,
     if (!bind.isDisableAccount()) SettingsTabKey.account,
     if (isWindows &&
@@ -192,10 +192,10 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
           settingTabs.add(_TabInfo(tab, 'Security',
               Icons.enhanced_encryption_outlined, Icons.enhanced_encryption));
           break;
-        case SettingsTabKey.network:
-          settingTabs
-              .add(_TabInfo(tab, 'Network', Icons.link_outlined, Icons.link));
-          break;
+      //  case SettingsTabKey.network:
+      //    settingTabs
+      //        .add(_TabInfo(tab, 'Network', Icons.link_outlined, Icons.link));
+      //    break;
         case SettingsTabKey.display:
           settingTabs.add(_TabInfo(tab, 'Display',
               Icons.desktop_windows_outlined, Icons.desktop_windows));
@@ -227,9 +227,9 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
         case SettingsTabKey.safety:
           children.add(const _Safety());
           break;
-        case SettingsTabKey.network:
-          children.add(const _Network());
-          break;
+       // case SettingsTabKey.network:
+       //   children.add(const _Network());
+       //   break;
         case SettingsTabKey.display:
           children.add(const _Display());
           break;
