@@ -5,16 +5,12 @@ authors = ["sistelca <sistelca2011@gmail.com>"]
 edition = "2021"
 build= "build.rs"
 description = "Sistelca Remote Desktop"
-default-run = "Sistelca"
+default-run = "rustdesk"
 rust-version = "1.75"
 
 [lib]
 name = "librustdesk"
 crate-type = ["cdylib", "staticlib", "rlib"]
-
-[[bin]]
-name = "Sistelca"
-path = "src/main.rs"
 
 [[bin]]
 name = "naming"
