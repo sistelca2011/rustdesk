@@ -287,7 +287,7 @@ jobs:
       - name: Build rustdesk
         run: |
           # Windows: build RustDesk
-          # Omitimos --skip-portable-pack para que compile el empaquetador portable
+          # Dejamos que build.py compile Flutter
           python3 .\build.py --portable --flutter --hwcodec ${{ matrix.job.build-args }}
           mv ./flutter/build/windows/${{ matrix.job.flutter-arch }}/runner/Release ./rustdesk
           
@@ -369,17 +369,11 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           sed -i '/dpiAware/d' res/manifest.xml || true
-          
-          # Si build.py no dejó el packer en target/release, compilarlo explícitamente
-          if [ ! -f ./target/release/rustdesk-portable-packer.exe ]; then
-            cargo build --release -p rustdesk-portable-packer
-          fi
-          
           pushd ./libs/portable
           pip3 install -r requirements.txt
+          # generate.py empaqueta el contenido de ../../rustdesk/, crea data.bin y compila el packer
           python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
           popd
-          
           mkdir -p ./SignOutput
           cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/Sistelca-${{ env.VERSION }}-${{ matrix.job.arch }}-setup.exe
           cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.exe
@@ -533,12 +527,10 @@ jobs:
         shell: bash
         run: |
           python3 res/inline-sciter.py
-          # Patch sciter x86
           sed -i 's/branch = "dyn"/branch = "dyn_x86"/g' ./Cargo.toml
           cargo update -p sciter-rs --precise 674e07d3066ca9a92ced3816203ab6b652629d1e
           cargo build --locked --features inline,vram,hwcodec --release --bins
           mkdir -p ./Release
-          # El binario compilado por cargo siempre se llama rustdesk.exe
           mv ./target/release/rustdesk.exe ./Release/rustdesk.exe
           cp ./Release/rustdesk.exe ./Release/Sistelca.exe
           curl -LJ -o ./Release/sciter.dll https://github.com/c-smile/sciter-sdk/raw/master/bin.win/x32/sciter.dll
@@ -580,11 +572,6 @@ jobs:
         shell: bash
         run: |
           sed -i '/dpiAware/d' res/manifest.xml || true
-          
-          if [ ! -f ./target/release/rustdesk-portable-packer.exe ]; then
-            cargo build --release -p rustdesk-portable-packer
-          fi
-          
           pushd ./libs/portable
           pip3 install -r requirements.txt
           python3 ./generate.py -f ../../Release/ -o . -e ../../Release/rustdesk.exe
@@ -597,7 +584,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
         shell: bash
         run: |
-          BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./SignOutput/
+          BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./SignOutput
 
       - name: Upload Sciter Windows Installers
         if: env.UPLOAD_ARTIFACT == 'true'
