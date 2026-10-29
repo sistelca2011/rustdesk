@@ -397,7 +397,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           pushd ./res/msi
-          python -c 'import subprocess, sys; sys.exit(subprocess.call([sys.executable, "preprocess.py", "--arp", "--custom", "--app-name", "Sistelca", "-m", "Sistelca", "--custom-arp", "{\"Contact\":{\"msi\":\"ARPCONTACT\",\"v\":\"https://sistelca2011.com\"},\"HelpLink\":{\"msi\":\"ARPHELPLINK\",\"v\":\"https://sistelca2011.com\"},\"ReadMe\":{\"msi\":\"ARPREADME\",\"v\":\"https://sistelca2011.com\"}}", "-d", "../../rustdesk"]))'
+          python ../../.github/scripts/run_msi_preprocess.py
           nuget restore msi.sln
           $msiPlatform = if ('${{ matrix.job.arch }}' -eq 'aarch64') { 'ARM64' } else { 'x64' }
           msbuild msi.sln -p:Configuration=Release -p:Platform=$msiPlatform /p:TargetVersion=Windows10

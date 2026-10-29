@@ -50,11 +50,17 @@ def main() -> None:
     )
 
     # 2. Set APP_NAME to Sistelca on Windows/Android/iOS while preserving Linux/macOS service bundle IDs
+    # Note: Use cfg!(...) inside the expression rather than #[cfg(...)] on duplicate static refs,
+    # because lazy_static! does not propagate #[cfg] attributes to its generated Deref/LazyStatic impls.
     app_name_replacement = (
-        '#[cfg(any(target_os = "macos", target_os = "linux"))]\n'
-        '    pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());\n'
-        '    #[cfg(not(any(target_os = "macos", target_os = "linux")))]\n'
-        f'    pub static ref APP_NAME: RwLock<String> = RwLock::new("{CUSTOM_APP_NAME}".to_owned());'
+        "pub static ref APP_NAME: RwLock<String> = RwLock::new(\n"
+        '        if cfg!(any(target_os = "macos", target_os = "linux")) {\n'
+        '            "RustDesk"\n'
+        "        } else {\n"
+        f'            "{CUSTOM_APP_NAME}"\n'
+        "        }\n"
+        "        .to_owned()\n"
+        "    );"
     )
     text = apply_exact_replacement(
         text,
