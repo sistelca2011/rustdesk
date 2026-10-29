@@ -1080,7 +1080,7 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
 
 #[inline]
 pub fn get_app_name() -> String {
-    "Sistelca".to_owned()
+    hbb_common::config::APP_NAME.read().unwrap().clone()
 }
 
 #[inline]
@@ -1116,6 +1116,9 @@ pub fn get_custom_rendezvous_server(custom: String) -> String {
     if !custom.is_empty() {
         return custom;
     }
+    if !config::PROD_RENDEZVOUS_SERVER.read().unwrap().is_empty() {
+        return config::PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
+    }
     "soporte.sistelca2011.com".to_owned()
 }
 
@@ -1137,7 +1140,7 @@ pub fn get_api_server(api: String, custom: String) -> String {
     res
 }
 
-fn get_api_server_(api: String, custom: String) -> String {
+fn get_api_server_(api: String, _custom: String) -> String {
     #[cfg(windows)]
     if let Ok(lic) = crate::platform::windows::get_license_from_exe_name() {
         if !lic.api.is_empty() {
@@ -1147,7 +1150,7 @@ fn get_api_server_(api: String, custom: String) -> String {
     if !api.is_empty() {
         return api.to_owned();
     }
-    "http://soporte.sistelca2011.com:21114".to_owned()
+    "".to_owned()
 }
 
 #[inline]

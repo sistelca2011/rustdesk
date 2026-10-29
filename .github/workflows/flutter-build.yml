@@ -9,6 +9,10 @@ on:
       upload-tag:
         type: string
         default: "nightly"
+      windows-only:
+        type: boolean
+        required: false
+        default: false
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
@@ -57,6 +61,7 @@ env:
 
 jobs:
   generate-sbom:
+    if: ${{ !inputs.windows-only }}
     runs-on: ubuntu-latest
 
     permissions:
@@ -148,6 +153,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Patch Sistelca server and branding
+        shell: bash
+        run: python3 .github/scripts/patch_sistelca.py
 
       - name: Restore bridge files
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -286,13 +295,12 @@ jobs:
 
       - name: Build rustdesk
         run: |
-          # Windows: build RustDesk
-          # Dejamos que build.py compile Flutter
-          python3 .\build.py --portable --flutter --hwcodec ${{ matrix.job.build-args }}
+          # Windows: build RustDesk (skip redundant portable pack inside build.py)
+          python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec ${{ matrix.job.build-args }}
           mv ./flutter/build/windows/${{ matrix.job.flutter-arch }}/runner/Release ./rustdesk
-          
-          # Mantener ambas copias (Sistelca.exe y rustdesk.exe) para compatibilidad con scripts
-          cp ./rustdesk/rustdesk.exe ./rustdesk/Sistelca.exe
+
+          # Renombrar ejecutable principal a Sistelca.exe (evita empaquetar dos copias)
+          mv ./rustdesk/rustdesk.exe ./rustdesk/Sistelca.exe
 
           # Download usbmmidd_v2.zip and extract it to ./rustdesk
           Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
@@ -371,12 +379,14 @@ jobs:
           sed -i '/dpiAware/d' res/manifest.xml || true
           pushd ./libs/portable
           pip3 install -r requirements.txt
-          # generate.py empaqueta el contenido de ../../rustdesk/, crea data.bin y compila el packer
-          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
+          # generate.py empaqueta ../../rustdesk/ con Sistelca.exe como ejecutable de arranque
+          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/Sistelca.exe
           popd
           mkdir -p ./SignOutput
-          cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/Sistelca-${{ env.VERSION }}-${{ matrix.job.arch }}-setup.exe
-          cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.exe
+          # El sufijo -install.exe activa el asistente de instalacion en RustDesk (is_setup);
+          # el sufijo -portable.exe abre el cliente directamente en modo portable.
+          cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/Sistelca-${{ env.VERSION }}-${{ matrix.job.arch }}-install.exe
+          cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/Sistelca-${{ env.VERSION }}-${{ matrix.job.arch }}-portable.exe
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
@@ -387,7 +397,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           pushd ./res/msi
-          python preprocess.py --arp -d ../../rustdesk
+          python -c 'import subprocess, sys; sys.exit(subprocess.call([sys.executable, "preprocess.py", "--arp", "--custom", "--app-name", "Sistelca", "-m", "Sistelca", "--custom-arp", "{\"Contact\":{\"msi\":\"ARPCONTACT\",\"v\":\"https://sistelca2011.com\"},\"HelpLink\":{\"msi\":\"ARPHELPLINK\",\"v\":\"https://sistelca2011.com\"},\"ReadMe\":{\"msi\":\"ARPREADME\",\"v\":\"https://sistelca2011.com\"}}", "-d", "../../rustdesk"]))'
           nuget restore msi.sln
           $msiPlatform = if ('${{ matrix.job.arch }}' -eq 'aarch64') { 'ARM64' } else { 'x64' }
           msbuild msi.sln -p:Configuration=Release -p:Platform=$msiPlatform /p:TargetVersion=Windows10
@@ -397,7 +407,7 @@ jobs:
           sha256sum ./SignOutput/*.msi
 
       - name: Build pre-built MSI template
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: false
         run: |
           git checkout -- res/msi
           cp -r ./rustdesk ./rustdesk-msi-template
@@ -421,7 +431,7 @@ jobs:
           rm -r -fo ./rustdesk-msi-template
 
       - name: Upload unsigned msi template
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: false
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rustdesk-unsigned-msi-template-${{ matrix.job.arch }}
@@ -447,8 +457,6 @@ jobs:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ./SignOutput/rustdesk-*.msi
-            ./SignOutput/rustdesk-*.exe
             ./SignOutput/Sistelca-*.*
 
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
@@ -477,6 +485,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Patch Sistelca server and branding
+        shell: bash
+        run: python3 .github/scripts/patch_sistelca.py
 
       - name: Install LLVM and Clang
         uses: rustdesk-org/install-llvm-action-32bit@6aa7d9ad3df84dff01cd4596dd0fc880a7f47fce # no release tag; commit 2026-05-26
@@ -531,8 +543,7 @@ jobs:
           cargo update -p sciter-rs --precise 674e07d3066ca9a92ced3816203ab6b652629d1e
           cargo build --locked --features inline,vram,hwcodec --release --bins
           mkdir -p ./Release
-          mv ./target/release/rustdesk.exe ./Release/rustdesk.exe
-          cp ./Release/rustdesk.exe ./Release/Sistelca.exe
+          mv ./target/release/rustdesk.exe ./Release/Sistelca.exe
           curl -LJ -o ./Release/sciter.dll https://github.com/c-smile/sciter-sdk/raw/master/bin.win/x32/sciter.dll
           echo "output_folder=./Release" >> $GITHUB_OUTPUT
           curl -LJ -o ./usbmmidd_v2.zip https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip
@@ -574,11 +585,11 @@ jobs:
           sed -i '/dpiAware/d' res/manifest.xml || true
           pushd ./libs/portable
           pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../Release/ -o . -e ../../Release/rustdesk.exe
+          python3 ./generate.py -f ../../Release/ -o . -e ../../Release/Sistelca.exe
           popd
           mkdir -p ./SignOutput
-          cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/Sistelca-${{ env.VERSION }}-${{ matrix.job.arch }}-sciter-setup.exe
-          cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-sciter.exe
+          cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/Sistelca-${{ env.VERSION }}-${{ matrix.job.arch }}-sciter-install.exe
+          cp ./target/release/rustdesk-portable-packer.exe ./SignOutput/Sistelca-${{ env.VERSION }}-${{ matrix.job.arch }}-sciter-portable.exe
 
       - name: Sign rustdesk self-extracted file
         if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
@@ -600,11 +611,10 @@ jobs:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ./SignOutput/rustdesk-*.exe
             ./SignOutput/Sistelca-*.*
 
   build-rustdesk-ios:
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
     name: build rustdesk ios ipa
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -633,6 +643,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Patch Sistelca server and branding
+        shell: bash
+        run: python3 .github/scripts/patch_sistelca.py
 
       - name: Install flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
@@ -707,6 +721,7 @@ jobs:
           flutter build ipa --release --no-codesign
 
   build-for-macOS:
+    if: ${{ !inputs.windows-only }}
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -740,6 +755,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Patch Sistelca server and branding
+        shell: bash
+        run: python3 .github/scripts/patch_sistelca.py
 
       - name: Import the codesign cert
         if: env.MACOS_P12_BASE64 != null
@@ -928,7 +947,7 @@ jobs:
       - build-for-windows-flutter
       - build-for-windows-sciter
     runs-on: ubuntu-latest
-    if: ${{ inputs.upload-artifact }}
+    if: false
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -984,6 +1003,7 @@ jobs:
           files: rustdesk-${{ env.VERSION }}-unsigned.tar.gz
 
   build-rustdesk-android:
+    if: ${{ !inputs.windows-only }}
     needs: [generate-bridge]
     name: build rustdesk android apk ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
@@ -1069,6 +1089,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Patch Sistelca server and branding
+        shell: bash
+        run: python3 .github/scripts/patch_sistelca.py
 
       - name: Install flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
@@ -1271,7 +1295,7 @@ jobs:
   build-rustdesk-android-universal:
     needs: [build-rustdesk-android]
     name: build rustdesk android universal apk
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
     runs-on: ubuntu-24.04
     env:
       reltype: release
@@ -1334,6 +1358,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Patch Sistelca server and branding
+        shell: bash
+        run: python3 .github/scripts/patch_sistelca.py
 
       - name: Install flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
@@ -1449,6 +1477,7 @@ jobs:
             signed-apk/rustdesk-${{ env.VERSION }}-universal${{ env.suffix }}.apk
 
   build-rustdesk-linux:
+    if: ${{ !inputs.windows-only }}
     needs: [generate-bridge]
     name: build rustdesk linux ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.on }}
@@ -1495,6 +1524,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Patch Sistelca server and branding
+        shell: bash
+        run: python3 .github/scripts/patch_sistelca.py
 
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@49819abfb41bd9b44fb781159c033dba90353a7c # v1.0
@@ -1774,6 +1807,7 @@ jobs:
             res/rustdesk-${{ env.VERSION }}*.zst
 
   build-rustdesk-linux-drm:
+    if: ${{ !inputs.windows-only }}
     needs: [generate-bridge]
     name: build rustdesk linux drm x86_64
     runs-on: ubuntu-22.04
@@ -1798,6 +1832,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Patch Sistelca server and branding
+        shell: bash
+        run: python3 .github/scripts/patch_sistelca.py
 
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@49819abfb41bd9b44fb781159c033dba90353a7c # v1.0
@@ -2041,7 +2079,7 @@ jobs:
           path: ${{ env.DRM_DEB }}
 
   build-rustdesk-linux-sciter:
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
     runs-on: ${{ matrix.job.on }}
     name: build-rustdesk-linux-sciter ${{ matrix.job.target }}
     strategy:
@@ -2080,6 +2118,10 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           submodules: recursive
+
+      - name: Patch Sistelca server and branding
+        shell: bash
+        run: python3 .github/scripts/patch_sistelca.py
 
       - name: Modify vcpkg.json for armv7
         if: matrix.job.vcpkg-triplet == 'arm-linux'
@@ -2260,7 +2302,7 @@ jobs:
     name: Build appimage ${{ matrix.job.target }}
     needs: [build-rustdesk-linux]
     runs-on: ubuntu-22.04
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
     strategy:
       fail-fast: false
       matrix:
@@ -2310,7 +2352,7 @@ jobs:
       - build-rustdesk-linux
       - build-rustdesk-linux-sciter
     runs-on: ${{ matrix.job.on }}
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
     strategy:
       fail-fast: false
       matrix:
